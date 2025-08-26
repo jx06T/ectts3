@@ -1,4 +1,4 @@
-'use client'; 
+'use client';
 
 import SetBlock from "@/components/Block/SetBlock";
 

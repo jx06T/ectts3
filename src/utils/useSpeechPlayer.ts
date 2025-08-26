@@ -1,10 +1,15 @@
 'use client';
 
 import { useState, useEffect, useRef, useCallback } from 'react';
-import { useSpeech } from '@/utils/Speech'; // <--- 使用您提供的 Hook
+import { useSpeech } from '@/utils/Speech';
 import { useNotify } from '@/context/NotifyContext';
 
-// 假設 Settings 類型定義在 @/types
+// --- Type Definitions ---
+interface Word {
+    english: string;
+    chinese: string;
+}
+
 interface Settings {
     timeWW: number; timeEE: number; timeEL: number; timeLC: number;
     speed: number; repeat: number; letter: boolean; chinese: boolean; init?: boolean;
@@ -15,133 +20,170 @@ const initialSettings: Settings = {
     repeat: 3, letter: true, chinese: true, init: true
 };
 
+const SILENT_AUDIO_SRC = "data:audio/wav;base64,UklGRjIAAABXQVZFZm10IBIAAAABAAEARKwAAIhYAQACABAAAABkYXRhIAAAAAA=";
+
+// --- The Refactored Hook ---
 export function useSpeechPlayer(
     words: Word[],
-    playableIndices: number[], // 這是原始 `words` 陣列中的索引
-    playIndex: number,         // 這是 `playableIndices` 陣列中的索引
-    setPlayIndex: (updateFn: (prevIndex: number) => number) => void
+    // NEW: The stable originalIndex of the word to play, or null if nothing.
+    playingOriginalIndex: number | null,
+    // NEW: Callback to signal completion and request the next word.
+    onFinished: () => void
 ) {
     const { popNotify } = useNotify();
-    const { synth, speakerC, speakerE, createUtterance } = useSpeech(); // <--- 從您的 Hook 獲取能力
+    const { synth, speakerC, speakerE, createUtterance } = useSpeech();
 
     const [settings, setSettings] = useState<Settings>(initialSettings);
     const [isPlaying, setIsPlaying] = useState(false);
 
-    const playbackIdRef = useRef(0); // 用於中斷過時的播放序列
-    const timeoutIds = useRef<NodeJS.Timeout[]>([]); // 儲存所有的 setTimeout ID 以便清除
+    const playbackIdRef = useRef(0);
+    const timeoutIds = useRef<NodeJS.Timeout[]>([]);
+    const keepAliveAudioRef = useRef<HTMLAudioElement | null>(null);
 
-    // --- 設定管理 ---
+    const settingsRef = useRef(settings);
+    const wordsRef = useRef<Word[]>(words);
+
+    // --- Settings and Data Management ---
     useEffect(() => {
         const storedSettings = localStorage.getItem('ectts-settings');
         if (storedSettings) {
-            setSettings(JSON.parse(storedSettings));
+            try {
+                const parsedSettings = JSON.parse(storedSettings);
+                setSettings(prev => ({ ...prev, ...parsedSettings, init: false }));
+            } catch (error) {
+                console.error("Failed to parse settings from localStorage:", error);
+                setSettings(prev => ({ ...prev, init: false }));
+            }
+        } else {
+            setSettings(prev => ({ ...prev, init: false }));
         }
     }, []);
 
     useEffect(() => {
+        settingsRef.current = settings;
+        wordsRef.current = words;
         if (!settings.init) {
-            localStorage.setItem('ectts-settings', JSON.stringify(settings));
+            const { init, ...settingsToStore } = settings;
+            localStorage.setItem('ectts-settings', JSON.stringify(settingsToStore));
         }
-    }, [settings]);
+    }, [settings, words]);
 
-    // --- 核心播放邏輯 ---
+    // --- Keep-Alive Audio (Unchanged) ---
+    useEffect(() => {
+        const handleAudioPlay = () => !isPlaying && setIsPlaying(true);
+        const handleAudioPause = () => isPlaying && setIsPlaying(false);
+        if (!keepAliveAudioRef.current) {
+            const audio = new Audio(SILENT_AUDIO_SRC);
+            audio.loop = true; audio.volume = 0; audio.setAttribute('playsinline', 'true');
+            keepAliveAudioRef.current = audio;
+        }
+        const audioElement = keepAliveAudioRef.current;
+        audioElement.addEventListener('play', handleAudioPlay);
+        audioElement.addEventListener('pause', handleAudioPause);
+        return () => {
+            audioElement.removeEventListener('play', handleAudioPlay);
+            audioElement.removeEventListener('pause', handleAudioPause);
+        };
+    }, [isPlaying]);
+
+
+    // --- Core Playback Logic ---
     const stop = useCallback(() => {
+        playbackIdRef.current++;
         synth.cancel();
         timeoutIds.current.forEach(clearTimeout);
         timeoutIds.current = [];
-        setIsPlaying(false);
-        console.log("S")
     }, [synth]);
 
-    const playWord = useCallback((indexInPlayableList: number) => {
-        stop(); // 開始新播放前，先停止所有舊的
-        if (playableIndices.length === 0) return;
+    // This is the main effect that drives playback, now triggered by playingOriginalIndex
+    useEffect(() => {
+        if (!isPlaying || playingOriginalIndex === null) {
+            stop();
+            return;
+        }
 
-        const safeIndex = indexInPlayableList % playableIndices.length;
-        const originalWordIndex = playableIndices[safeIndex];
-        const wordToPlay = words[originalWordIndex];
+        stop(); // Always start clean
 
-        if (!wordToPlay) return;
+        const currentWords = wordsRef.current;
+        const wordToPlay = currentWords[playingOriginalIndex];
 
-        const currentPlaybackId = ++playbackIdRef.current;
-        const queue: (() => void)[] = [];
-        const addDelay = (ms: number) => queue.push(() => new Promise(resolve => timeoutIds.current.push(setTimeout(resolve, ms))));
+        if (!wordToPlay) {
+            console.error(`Word with originalIndex ${playingOriginalIndex} not found.`);
+            onFinished(); // Signal to move on if word is somehow invalid
+            return;
+        }
+
+        const currentPlaybackId = playbackIdRef.current;
+        const queue: (() => Promise<void>)[] = [];
+        
+        const addDelay = (ms: number) => queue.push(() => new Promise(resolve => {
+            const id = setTimeout(resolve, ms);
+            timeoutIds.current.push(id);
+        }));
 
         const speak = (utterance: SpeechSynthesisUtterance | null) => {
             if (utterance) {
                 queue.push(() => new Promise(resolve => {
-                    utterance.onend = resolve;
+                    utterance.onend = ()=>resolve();
+                    utterance.onerror = () => { console.warn("Speech error."); resolve(); };
                     synth.speak(utterance);
                 }));
             }
         };
 
-        // 根據您的原始邏輯構建播放隊列
-        for (let i = 0; i < settings.repeat; i++) {
-            speak(createUtterance(wordToPlay.english, settings.speed, speakerE));
-            if (i < settings.repeat - 1) addDelay(settings.timeEE * 1000);
+        const currentSettings = settingsRef.current;
+        for (let i = 0; i < currentSettings.repeat; i++) {
+            speak(createUtterance(wordToPlay.english, currentSettings.speed, speakerE));
+            if (i < currentSettings.repeat - 1) addDelay(currentSettings.timeEE * 1000);
         }
-
-        if (settings.letter) {
-            addDelay(settings.timeEL * 1000);
+        if (currentSettings.letter) {
+            addDelay(currentSettings.timeEL * 1000);
             const letters = wordToPlay.english.replace(/[^a-zA-Z]/g, '').split("").join(',');
             speak(createUtterance(letters, 1, speakerE));
         }
-
-        if (settings.chinese) {
-            addDelay(settings.timeLC * 1000);
+        if (currentSettings.chinese) {
+            addDelay(currentSettings.timeLC * 1000);
             speak(createUtterance(wordToPlay.chinese, 0.9, speakerC));
         }
+        addDelay(currentSettings.timeWW * 1000);
 
-        addDelay(settings.timeWW * 1000);
-
-        // 執行播放隊列
         (async () => {
             for (const task of queue) {
-                if (playbackIdRef.current !== currentPlaybackId) return; // 如果播放被中斷，則退出
+                if (playbackIdRef.current !== currentPlaybackId) return;
                 await task();
             }
-            // 隊列播放完成後，自動跳到下一首
             if (playbackIdRef.current === currentPlaybackId) {
-                setPlayIndex(prev => (prev + 1) % playableIndices.length);
+                onFinished(); // Signal completion
             }
         })();
 
-    }, [playableIndices, words, settings, stop, synth, speakerC, speakerE, createUtterance, setPlayIndex]);
+    }, [isPlaying, playingOriginalIndex, stop, onFinished, createUtterance, speakerC, speakerE, synth]);
 
-    useEffect(() => {
-        if (isPlaying) {
-            playWord(playIndex);
-        } else {
-            stop();
-        }
-    }, [playIndex, isPlaying]); // 當索引改變或播放狀態改變時觸發
 
     const togglePlayPause = useCallback(() => {
-        if (isPlaying) {
-            popNotify("Playback paused");
-            setIsPlaying(false);
-        } else {
-            if (playableIndices.length === 0) {
+        const nextIsPlaying = !isPlaying;
+        if (nextIsPlaying) {
+             if (wordsRef.current.filter(w => w.selected).length === 0) {
                 popNotify("No words selected to play");
                 return;
             }
             popNotify("Playback started");
             setIsPlaying(true);
+            keepAliveAudioRef.current?.play().catch(console.warn);
+        } else {
+            popNotify("Playback paused");
+            setIsPlaying(false);
+            keepAliveAudioRef.current?.pause();
         }
-    }, [isPlaying, popNotify, playableIndices.length]);
+    }, [isPlaying, popNotify]);
 
-    const playNext = useCallback(() => {
-        if (playableIndices.length > 0) {
-            setPlayIndex(prev => (prev + 1) % playableIndices.length);
-        }
-    }, [playableIndices.length, setPlayIndex]);
+    useEffect(() => {
+        return () => {
+            stop();
+            keepAliveAudioRef.current?.pause();
+        };
+    }, [stop]);
 
-    const playPrev = useCallback(() => {
-        if (playableIndices.length > 0) {
-            setPlayIndex(prev => (prev - 1 + playableIndices.length) % playableIndices.length);
-        }
-    }, [playableIndices.length, setPlayIndex]);
-
-    return { isPlaying, settings, setSettings, togglePlayPause, playNext, playPrev };
+    // NEW: Return setIsPlaying so parent can control it directly when starting playback
+    return { isPlaying, setIsPlaying, settings, setSettings, togglePlayPause, keepAliveAudioRef };
 }

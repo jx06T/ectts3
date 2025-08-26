@@ -225,7 +225,7 @@ export default function Sidebar() {
 
     return (
         <div ref={sidebarRef} className='sidebar h-full flex z-50 overflow-hidden'>
-            <div className={`bg-blue-50 ${isSidebarOpen ? " w-[18rem] px-2 p-1" : "min-w-0 w-0 px-0"} fixed xs:static h-full flex flex-col rounded-md transition-all duration-300 ease-in-out shadow-xl`}>
+            <div className={`bg-blue-50 ${isSidebarOpen ?  " w-[18rem] sm:w-[22rem] lg:w-[24rem] px-2 p-1" : "min-w-0 w-0 px-0"} fixed xs:static h-full flex flex-col rounded-md transition-all duration-300 ease-in-out shadow-xl`}>
                 <div className=' h-8 flex mt-1 items-center justify-between'>
                     <SolarSiderbarBold className=' cursor-pointer text-3xl' onClick={() => setIsSidebarOpen(!isSidebarOpen)} />
                     <MaterialAddToPhotos className=' cursor-pointer text-3xl mr-1' onClick={handleAddSet} />

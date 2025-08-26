@@ -55,20 +55,6 @@ function Marquee({ children, text, className = "" }: { className?: string, child
     );
 }
 
-// 注意: 你需要在 globals.css 中定義 animate-marquee 動畫
-/* 
-@keyframes marquee {
-  0% { transform: translateX(100%); }
-  100% { transform: translateX(-100%); }
-}
-.animate-marquee {
-  animation: marquee 10s linear infinite;
-  display: inline-block;
-  padding-left: 100%;
-}
-*/
-
-
 // --- PlayArea Props 定義 ---
 interface PlayAreaProps {
     words: Word[];
@@ -83,13 +69,14 @@ interface PlayAreaProps {
     togglePlayPause: () => void;
     playNext: () => void;
     playPrev: () => void;
+    keepAliveAudioRef: React.RefObject<HTMLAudioElement | null>;
 }
 
 
 // --- 主要的 PlayArea 元件 ---
 export default function PlayArea({
     words, currentTitle, playableIndices, playIndexInPlayable, scrollTo,
-    isPlaying, settings, setSettings, togglePlayPause, playNext, playPrev
+    isPlaying, settings, setSettings, togglePlayPause, playNext, playPrev, keepAliveAudioRef
 }: PlayAreaProps) {
     const [showSetting, setShowSetting] = useState(false);
     const { popNotify } = useNotify();
@@ -122,15 +109,22 @@ export default function PlayArea({
 
     return (
         <div className="fixed bottom-2 left-0 right-0 px-2 flex flex-col items-center z-40 pointer-events-none">
+            <audio
+                ref={keepAliveAudioRef}
+                src="/test.wav"
+                loop
+                style={{ display: 'none' }}
+                aria-hidden="true"
+            />
             <div className={` pointer-events-auto shadow-md bg-purple-200 rounded-lg w-full max-w-4xl opacity-95 overflow-hidden `}>
                 <div className={` ${showSetting ? "max-h-[500px]" : "max-h-0 "} overflow-hidden h-full w-fulltransition-all duration-500`}>
-                    <div className=' w-full h-full p-4  grid gap-10 justify-center ' style={{ gridTemplateColumns: "repeat(auto-fit, 300px)" }}>
+                    <div className=' w-full h-full p-4  grid gap-x-10 gap-y-3 justify-center ' style={{ gridTemplateColumns: "repeat(auto-fit, 300px)" }}>
                         {Object.entries(settings).filter(([key]) => key !== "init").map(([key, value]) => {
                             const uiConfig = SettingsUI[key];
                             if (!uiConfig) return null;
                             return (
                                 <div key={key} className="my-1 flex items-center space-x-1">
-                                    <span onClick={() => popNotify(uiConfig.hint || "")} className="w-16 cursor-help font-semibold">{uiConfig.span}</span>
+                                    <span onClick={() => popNotify(uiConfig.hint || "")} className="w-16 cursor-help ">{uiConfig.span}</span>
                                     {uiConfig.type === 'range' ? (
                                         <>
                                             <input

@@ -49,7 +49,10 @@ export const StateProvider: React.FC<{ children: ReactNode }> = ({ children }) =
                 { "id": "jal32uktdo9mhk1s", "english": "carbon", "chinese": "碳", "selected": true, "done": true },
                 { "id": "3x59v0u7xlwjami1", "english": "corporation", "chinese": "公司", "selected": true, "done": true },
                 { "id": "guzo7ft8n8bjmx4s", "english": "contribute", "chinese": "做出貢獻，促成", "selected": true },
-                { "id": "myyu6pcp7h84shpf", "english": "fundamentally", "chinese": "基本上的", "selected": true, "done": true },
+                { "id": "myfsefsfseh84shpf", "english": "fundamentally", "chinese": "基本上的", "selected": true, "done": true },
+                { "id": "myyu6pg5d6648hpf", "english": "fundamentally", "chinese": "基本上的", "selected": true, "done": true },
+                { "id": "myyu6pcpfbw2222fpf", "english": "fundamentally", "chinese": "基本上的", "selected": true, "done": true },
+                { "id": "myyu6pcp7fwawhpf", "english": "fundamentally", "chinese": "基本上的", "selected": true, "done": true },
             ]));
         }
 
