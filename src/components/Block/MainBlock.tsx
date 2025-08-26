@@ -282,6 +282,7 @@ export default function MainBlock() {
 
     // --- **關鍵修正 1: 建立 Ref 來穩定回調函數所需的數據** ---
     const playableOriginalIndicesRef = useRef<number[]>([]);
+    const [isCardAreaReady, setIsCardAreaReady] = useState(false);
 
     // Intelligent displayList update logic
     useEffect(() => {
@@ -397,6 +398,25 @@ export default function MainBlock() {
         scrollRef.current?.scrollTo({ top: 0, behavior: 'smooth' });
     }, []);
 
+    useEffect(() => {
+        if (mode === 'cards') {
+            // 當 displayList 和 playableOriginalIndices 都已生成時
+            if (displayList.length > 0) {
+                // 如果當前沒有播放索引，或索引無效，則設置一個
+                if (playingOriginalIndex === null || !playableOriginalIndices.includes(playingOriginalIndex)) {
+                    if (playableOriginalIndices.length > 0) {
+                        setPlayingOriginalIndex(playableOriginalIndices[0]);
+                    }
+                }
+                // 只有在 displayList 準備好後，才認為加載完成
+                setIsCardAreaReady(true);
+            }
+        } else {
+            // 離開卡片模式時重置
+            setIsCardAreaReady(false);
+        }
+    }, [mode, displayList, playableOriginalIndices, playingOriginalIndex]);
+
     if (mode === 'settings') {
         return (
             <div className='main relative flex h-full w-full flex-col bg-slate-25 px-1 py-2 sm:h-full'>
@@ -405,6 +425,7 @@ export default function MainBlock() {
             </div>
         );
     }
+    const randomTable = useMemo(() => displayList.map(item => item.originalIndex), [displayList]);
 
     return (
         <div className='main relative flex h-full w-full flex-col bg-slate-25 px-1 py-2 sm:h-full'>
@@ -473,9 +494,13 @@ export default function MainBlock() {
                     words={words}
                     state={state}
                     handleDoneToggle={handleDoneToggle}
-                    playableOriginalIndices={playableOriginalIndices}
-                    playIndexInPlayable={playingOriginalIndex !== null ? playableOriginalIndices.indexOf(playingOriginalIndex) : -1}
-                    setPlayIndexInPlayable={() => {}}
+                    randomTable={randomTable} // displayList 中所有單字的 originalIndex 順序
+                    randomTableToPlay={playableOriginalIndices} // 可播放單字的 originalIndex 列表
+                    progress={{
+                        playIndex: playingOriginalIndex || 0, // 當前播放的 originalIndex
+                        setPlayIndex: setPlayingOriginalIndex, // 更新播放索引的函數
+                    }}
+                    isInitialLoading={!isCardAreaReady}
                 />
             )}
 
