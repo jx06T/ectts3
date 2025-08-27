@@ -11,7 +11,6 @@ import { getRandId, copyToClipboard } from '@/utils/tool';
 import { useNotify } from '@/context/NotifyContext';
 import { useStateContext } from '@/context/StateContext';
 import createConfirmDialog from '@/components/ui/ConfirmDialog';
-import { useSpeechPlayer } from '@/utils/useSpeechPlayer';
 
 // --- Sub-components ---
 import WordItem from '@/components/ui/WordItem';
@@ -188,7 +187,7 @@ function ImportExportArea({ words, onImport, scrollToTop }: ImportExportProps) {
 }
 
 // ====================================================================
-// Data Hook
+// Data Hook (useWordSet)
 // ====================================================================
 function useWordSet(setId: string | undefined) {
     const router = useRouter();
@@ -269,21 +268,18 @@ export default function MainBlock() {
 
     const [displayList, setDisplayList] = useState<DisplayWord[]>([]);
     const [showAddForm, setShowAddForm] = useState(false);
-
     const [playingOriginalIndex, setPlayingOriginalIndex] = useState<number | null>(null);
 
     const [scrollTop, setScrollTop] = useState(0);
     const [startIndex, setStartIndex] = useState(0);
     const [endIndex, setEndIndex] = useState(20);
     const [topIndex, setTopIndex] = useState(0);
+    
+    const [isCardAreaReady, setIsCardAreaReady] = useState(false);
 
     const scrollRef = useRef<HTMLDivElement>(null);
     const randStateRef = useRef(state.rand);
-
-    // --- **關鍵修正 1: 建立 Ref 來穩定回調函數所需的數據** ---
-    const playableOriginalIndicesRef = useRef<number[]>([]);
-    const [isCardAreaReady, setIsCardAreaReady] = useState(false);
-
+    
     // Intelligent displayList update logic
     useEffect(() => {
         const needsReshuffle = displayList.length !== words.length || randStateRef.current !== state.rand || (displayList.length === 0 && words.length > 0);
@@ -323,48 +319,12 @@ export default function MainBlock() {
             .map(word => word.originalIndex);
     }, [displayList, state.onlyPlayUnDone]);
 
-    // Sync the latest playable list to the ref for stable callbacks
-    useEffect(() => {
-        playableOriginalIndicesRef.current = playableOriginalIndices;
-    }, [playableOriginalIndices]);
-
-    // --- **關鍵修正 2: `playNextWord` 回調現在完全穩定** ---
-    const playNextWord = useCallback(() => {
-        const currentPlayable = playableOriginalIndicesRef.current;
-        if (currentPlayable.length === 0) {
-            setPlayingOriginalIndex(null);
-            return;
-        }
-        const currentIndexInPlayable = playingOriginalIndex !== null ? currentPlayable.indexOf(playingOriginalIndex) : -1;
-        const nextIndexInPlayable = (currentIndexInPlayable + 1) % currentPlayable.length;
-        const nextOriginalIndex = currentPlayable[nextIndexInPlayable];
-        setPlayingOriginalIndex(nextOriginalIndex);
-    }, [playingOriginalIndex]); // Now only depends on the stable state
-
-    const { isPlaying, setIsPlaying, settings, setSettings, togglePlayPause, keepAliveAudioRef } = useSpeechPlayer(
-        words,
-        playingOriginalIndex,
-        playNextWord
-    );
-
-    const playNext = useCallback(() => {
-        if (!isPlaying) return;
-        playNextWord();
-    }, [isPlaying, playNextWord]);
-
-    const playPrev = useCallback(() => {
-        if (!isPlaying) return;
-        const currentPlayable = playableOriginalIndicesRef.current;
-        if (playingOriginalIndex === null || currentPlayable.length === 0) return;
-        const currentIndexInPlayable = currentPlayable.indexOf(playingOriginalIndex);
-        const prevIndexInPlayable = (currentIndexInPlayable - 1 + currentPlayable.length) % currentPlayable.length;
-        const prevOriginalIndex = currentPlayable[prevIndexInPlayable];
-        setPlayingOriginalIndex(prevOriginalIndex);
-    }, [isPlaying, playingOriginalIndex]);
-
-    // --- **關鍵修正 3: 新的 `handlePlayFromListItem` 函數** ---
+    // --- 主要修改點 1: 移除 useSpeechPlayer hook 和相關狀態 ---
+    // 這部分邏輯現在完全由 PlayArea 元件處理
+    
+    // --- 主要修改點 2: 簡化從列表項觸發播放的函數 ---
     const handlePlayFromListItem = useCallback((originalIndexToPlay: number) => {
-        // Step 1: Ensure the word is selected before playing.
+        // Step 1: 如果單字未選中，則自動選中它
         if (!words[originalIndexToPlay]?.selected) {
             const newWords = words.map((word, i) =>
                 i === originalIndexToPlay ? { ...word, selected: true } : word
@@ -372,11 +332,9 @@ export default function MainBlock() {
             setWords(newWords);
         }
 
-        // Step 2: Directly set the playback state.
-        // The speech player hook will pick this up in the next render cycle.
+        // Step 2: 只需設置要播放的索引。PlayArea 會監聽這個變化。
         setPlayingOriginalIndex(originalIndexToPlay);
-        // setIsPlaying(true);
-    }, [words, setWords, setIsPlaying]);
+    }, [words, setWords]);
 
 
     const handleDoneToggle = useCallback((originalIndex: number, type: string = "") => {
@@ -400,19 +358,15 @@ export default function MainBlock() {
 
     useEffect(() => {
         if (mode === 'cards') {
-            // 當 displayList 和 playableOriginalIndices 都已生成時
             if (displayList.length > 0) {
-                // 如果當前沒有播放索引，或索引無效，則設置一個
                 if (playingOriginalIndex === null || !playableOriginalIndices.includes(playingOriginalIndex)) {
                     if (playableOriginalIndices.length > 0) {
                         setPlayingOriginalIndex(playableOriginalIndices[0]);
                     }
                 }
-                // 只有在 displayList 準備好後，才認為加載完成
                 setIsCardAreaReady(true);
             }
         } else {
-            // 離開卡片模式時重置
             setIsCardAreaReady(false);
         }
     }, [mode, displayList, playableOriginalIndices, playingOriginalIndex]);
@@ -495,39 +449,27 @@ export default function MainBlock() {
                     words={words}
                     state={state}
                     handleDoneToggle={handleDoneToggle}
-                    randomTable={randomTable} // displayList 中所有單字的 originalIndex 順序
-                    randomTableToPlay={playableOriginalIndices} // 可播放單字的 originalIndex 列表
+                    randomTable={randomTable}
+                    randomTableToPlay={playableOriginalIndices}
                     progress={{
-                        playIndex: playingOriginalIndex || 0, // 當前播放的 originalIndex
-                        setPlayIndex: setPlayingOriginalIndex, // 更新播放索引的函數
+                        playIndex: playingOriginalIndex || 0,
+                        setPlayIndex: setPlayingOriginalIndex,
                     }}
                     isInitialLoading={!isCardAreaReady}
                 />
             )}
 
+            {/* --- 主要修改點 3: 正確地將 props 傳遞給 PlayArea --- */}
             <PlayArea
                 words={words}
                 currentTitle={currentTitle}
-                playableIndices={playableOriginalIndices}
-                playIndexInPlayable={playingOriginalIndex !== null ? playableOriginalIndices.indexOf(playingOriginalIndex) : -1}
+                playableOriginalIndices={playableOriginalIndices}
+                playingOriginalIndex={playingOriginalIndex}
+                setPlayingOriginalIndex={setPlayingOriginalIndex}
                 scrollTo={(originalIndex) => {
                     const listIdx = displayList.findIndex(w => w.originalIndex === originalIndex);
                     if (listIdx > -1) scrollTo(listIdx);
                 }}
-                isPlaying={isPlaying}
-                settings={settings}
-                setSettings={setSettings}
-                togglePlayPause={() => {
-                    if (isPlaying) {
-                        togglePlayPause(); // The hook's pause function
-                    } else {
-                        // The hook's resume function (it continues from playingOriginalIndex)
-                        setIsPlaying(true);
-                    }
-                }}
-                playNext={playNext}
-                playPrev={playPrev}
-                keepAliveAudioRef={keepAliveAudioRef}
             />
         </div>
     );
