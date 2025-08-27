@@ -2,8 +2,6 @@ import React, { useEffect, useRef, useState } from "react"
 import { MingcuteVolumeLine, MaterialDeleteRounded } from "@/components/ui/Icons";
 import useSpeech from "@/utils/Speech";
 
-import { useNotify } from "@/context/NotifyContext";
-
 interface WordItemProps {
   word: Word;
   index: number;

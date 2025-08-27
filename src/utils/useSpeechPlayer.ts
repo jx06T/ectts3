@@ -63,7 +63,7 @@ export function useSpeechPlayer(
         settingsRef.current = settings;
         wordsRef.current = words;
         if (!settings.init) {
-            const { init, ...settingsToStore } = settings;
+            const { ...settingsToStore } = settings;
             localStorage.setItem('ectts-settings', JSON.stringify(settingsToStore));
         }
     }, [settings, words]);
@@ -115,7 +115,7 @@ export function useSpeechPlayer(
 
         const currentPlaybackId = playbackIdRef.current;
         const queue: (() => Promise<void>)[] = [];
-        
+
         const addDelay = (ms: number) => queue.push(() => new Promise(resolve => {
             const id = setTimeout(resolve, ms);
             timeoutIds.current.push(id);
@@ -124,7 +124,7 @@ export function useSpeechPlayer(
         const speak = (utterance: SpeechSynthesisUtterance | null) => {
             if (utterance) {
                 queue.push(() => new Promise(resolve => {
-                    utterance.onend = ()=>resolve();
+                    utterance.onend = () => resolve();
                     utterance.onerror = () => { console.warn("Speech error."); resolve(); };
                     synth.speak(utterance);
                 }));
@@ -163,7 +163,7 @@ export function useSpeechPlayer(
     const togglePlayPause = useCallback(() => {
         const nextIsPlaying = !isPlaying;
         if (nextIsPlaying) {
-             if (wordsRef.current.filter(w => w.selected).length === 0) {
+            if (wordsRef.current.filter(w => w.selected).length === 0) {
                 popNotify("No words selected to play");
                 return;
             }

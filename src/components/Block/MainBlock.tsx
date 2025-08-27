@@ -416,7 +416,9 @@ export default function MainBlock() {
             setIsCardAreaReady(false);
         }
     }, [mode, displayList, playableOriginalIndices, playingOriginalIndex]);
-
+    
+    const randomTable = useMemo(() => displayList.map(item => item.originalIndex), [displayList]);
+    
     if (mode === 'settings') {
         return (
             <div className='main relative flex h-full w-full flex-col bg-slate-25 px-1 py-2 sm:h-full'>
@@ -425,7 +427,6 @@ export default function MainBlock() {
             </div>
         );
     }
-    const randomTable = useMemo(() => displayList.map(item => item.originalIndex), [displayList]);
 
     return (
         <div className='main relative flex h-full w-full flex-col bg-slate-25 px-1 py-2 sm:h-full'>
