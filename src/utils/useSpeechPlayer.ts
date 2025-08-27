@@ -4,12 +4,6 @@ import { useState, useEffect, useRef, useCallback } from 'react';
 import { useSpeech } from '@/utils/Speech';
 import { useNotify } from '@/context/NotifyContext';
 
-// --- Type Definitions ---
-interface Word {
-    english: string;
-    chinese: string;
-}
-
 interface Settings {
     timeWW: number; timeEE: number; timeEL: number; timeLC: number;
     speed: number; repeat: number; letter: boolean; chinese: boolean; init?: boolean;
